@@ -1,0 +1,11 @@
+{
+  "name": "codelink-hydro",
+  "version": "1.0.0",
+  "description": "codelink plugin for hydrooj",
+  "main": "index.ts",
+  "author": "peop1e <cqq060213@163.com>",
+  "packageManager": "yarn@4.9.2",
+  "devDependencies": {
+    "hydrooj": "^5.0.0-beta.6"
+  }
+}

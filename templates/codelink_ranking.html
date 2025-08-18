@@ -1,0 +1,54 @@
+{% extends "layout/basic.html" %}
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__body no-padding">
+        <div data-fragment-id="ranking">
+          {% if not udocs.length %}
+            {% if page == 1 %}
+              <blockquote class="note">{{ _('The ranking page is not updated realtime.') }}</blockquote>
+            {% endif %}
+          {{ nothing.render('Sorry, there are no users in this domain.') }}
+          {% else %}
+          <table class="data-table">
+            <colgroup>
+              <col class="col--rank">
+              <col class="col--user">
+              <col class="col--rp">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--rank">{{ _('Rank') }}</th>
+                <th class="col--user">{{ _('Username') }}</th>
+                <th class="col--rp">{{ _('Point') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+              <tr>
+                <td class="col--rank">{{ handler.user.codelink_rank|default('-') }}</td>
+                <td class="col--user">{{ user.render_inline(handler.user, levelbadge = false) }}</td>
+                <td class="col--rp">{{ handler.user.point|default(0)|round(0) }}</td>
+              </tr>
+              {% endif %}
+              {%- for udoc in udocs -%}
+              <tr>
+                <!-- <td class="col--rank">{{ (page - 1) * model.system.get('pagination.codelink_ranking') + loop.index }}</td> -->
+                <td class="col--rank">{{ udoc.codelink_rank }}</td>
+                <td class="col--user">{{ user.render_inline(udoc, levelbadge = false) }}</td>
+                <td class="col--rp">{{ udoc.point|default(0)|round(0) }}</td>
+              </tr>
+              {%- endfor -%}
+            </tbody>
+          </table>
+          {{ paginator.render(page, upcount) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
