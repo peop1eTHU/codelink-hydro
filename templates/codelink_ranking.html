@@ -24,6 +24,7 @@
                 <th class="col--rank">{{ _('Rank') }}</th>
                 <th class="col--user">{{ _('Username') }}</th>
                 <th class="col--rp">{{ _('Point') }}</th>
+                <th class="col--rp">{{ _('TotalScore') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -40,6 +41,7 @@
                 <td class="col--rank">{{ udoc.codelink_rank }}</td>
                 <td class="col--user">{{ user.render_inline(udoc, levelbadge = false) }}</td>
                 <td class="col--rp">{{ udoc.point|default(0)|round(0) }}</td>
+                <td class="col--rp">{{ udoc.totalScore|default(0)|round(0) }}</td>
               </tr>
               {%- endfor -%}
             </tbody>

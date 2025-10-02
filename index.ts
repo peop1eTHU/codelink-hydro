@@ -22,6 +22,12 @@ interface PointDef {
     base: number;
 }
 
+interface TotalScoreDef {
+    run(domainIds: string[], udict: ND, report: Function): Promise<void>;
+    hidden: boolean;
+    base: number;
+}
+
 const { log, max, min } = Math;
 
 function rating(users: { old: number, uid: number, rank: number }[]): { new: number, uid: number }[] {
@@ -66,6 +72,58 @@ export const PointTypes: Record<string, PointDef> = {
     },
 };
 
+function new_score(users: { old: number, uid: number, score: number }[]): { new: number, uid: number }[] {
+    let result = [];
+    for (const user of users) {
+        const newRating = user.old + user.score;
+        result.push({ new: newRating, uid: user.uid });
+    }
+    return result;
+}
+
+export const TotalScoreTypes: Record<string, TotalScoreDef> = {
+    contest: {
+        async run(domainIds, udict, report) {
+            const contests: Tdoc[] = await contest.getMulti('', { domainId: { $in: domainIds }, rated: true })
+                .toArray() as any;
+            if (contests.length) await report({ message: `Found ${contests.length} contests in ${domainIds[0]}` });
+            for (const tdoc of contests.reverse()) {
+                const start = Date.now();
+                const query = {
+                    docId: tdoc.docId,
+                    journal: { $ne: null },
+                };
+                if (!await contest.countStatus(tdoc.domainId, query)) continue;
+                const cursor = contest.getMultiStatus(tdoc.domainId, query).sort(contest.RULES[tdoc.rule].statusSort);
+                const rankedTsdocs = await contest.RULES[tdoc.rule].ranked(tdoc, cursor);
+                const users = rankedTsdocs.map((i) => ({ uid: i[1].uid, score: i[1].scoreSum, old: udict[i[1].uid] }));
+                for (const udoc of new_score(users)) udict[udoc.uid] = udoc.new;
+                await report({
+                    case: {
+                        status: STATUS.STATUS_ACCEPTED,
+                        message: `Contest ${tdoc.title} finished`,
+                        time: Date.now() - start,
+                        memory: 0,
+                        score: 0,
+                    },
+                });
+            }
+        },
+        hidden: false,
+        base: 0,
+    },
+};
+
+async function runCalcInDomain(domainId: string, report: Function) {
+    await report({ message: `Calculating domain ${domainId}` });
+    await report({ message: 'Calculating points...' });
+    await runCalcPointInDomain(domainId, report);
+    await report({ message: 'Calculating total scores...' });
+    await runCalcTotalScoreInDomain(domainId, report);
+    await report({ message: 'Calculating codelink ranks...' });
+    await runCalcCodelinkRankInDomain(domainId, report);
+}
+
 async function runCalcPointInDomain(domainId: string, report: Function) {
     const results: Record<keyof typeof PointTypes, ND> = {};
     const udict = Counter();
@@ -88,24 +146,48 @@ async function runCalcPointInDomain(domainId: string, report: Function) {
         bulk.find({ domainId, uid: +uid }).upsert().update({ $set: { point: Math.max(0, udict[uid]) } });
     }
     if (bulk.batches.length) await bulk.execute();
-    await runCalcCodelinkRankInDomain(domainId, report);
+}
+
+async function runCalcTotalScoreInDomain(domainId: string, report: Function) {
+    const results: Record<keyof typeof TotalScoreTypes, ND> = {};
+    const udict = Counter();
+    await db.collection('domain.user').updateMany({ domainId }, { $set: { totalScoreInfo: {} } });
+    for (const type in TotalScoreTypes) {
+        results[type] = new Proxy({}, { get: (self, key) => self[key] || TotalScoreTypes[type].base });
+        await TotalScoreTypes[type].run([domainId], results[type], report);
+        const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
+        for (const uid in results[type]) {
+            const udoc = await UserModel.getById(domainId, +uid);
+            if (!udoc?.hasPriv(PRIV.PRIV_USER_PROFILE)) continue;
+            bulk.find({ domainId, uid: +uid }).updateOne({ $set: { [`totalScoreInfo.${type}`]: results[type][uid] } });
+            udict[+uid] += results[type][uid];
+        }
+        if (bulk.batches.length) await bulk.execute();
+    }
+    await domain.setMultiUserInDomain(domainId, {}, { totalScore: 0 });
+    const bulk = db.collection('domain.user').initializeUnorderedBulkOp();
+    for (const uid in udict) {
+        bulk.find({ domainId, uid: +uid }).upsert().update({ $set: { totalScore: Math.max(0, udict[uid]) } });
+    }
+    if (bulk.batches.length) await bulk.execute();
 }
 
 export async function runCalcCodelinkRankInDomain(domainId: string, report: Function) {
     await domain.setMultiUserInDomain(domainId, {}, { codelink_rank: null });
-    let last = { point: null };
+    let last = { point: null, totalScore: null };
     let codelink_rank = 0;
     let count = 0;
     const coll = db.collection('domain.user');
     const filter = { uid: { $nin: [0, 1], $gt: -1000 } };
     const ducur = domain.getMultiUserInDomain(domainId, filter)
-        .project<{ _id: ObjectID, point: number }>({ point: 1 })
-        .sort({ point: -1 });
+        .project<{ _id: ObjectID, uid: number, point: number, totalScore: number }>({ point: 1, totalScore: 1, uid: 1 })
+        .sort({ point: -1, totalScore: -1, uid: 1 });
     let bulk = coll.initializeUnorderedBulkOp();
     for await (const dudoc of ducur) {
         count++;
         dudoc.point ||= null;
-        if (dudoc.point !== last.point) codelink_rank = count;
+        dudoc.totalScore ||= null;
+        if ((dudoc.point !== last.point) && (dudoc.totalScore !== last.totalScore)) codelink_rank = count;
         bulk.find({ _id: dudoc._id }).updateOne({ $set: { codelink_rank } });
         last = dudoc;
         if (count % 100 === 0) report({ message: `#${count}: codelink_rank ${codelink_rank}` });
@@ -120,7 +202,7 @@ export async function runCalcPoint({ domainId }, report: Function) {
         await report({ message: `Found ${domains.length} domains` });
         for (const i in domains) {
             const start = new Date().getTime();
-            await runCalcPointInDomain(domains[i]._id, report);
+            await runCalcInDomain(domains[i]._id, report);
             await report({
                 case: {
                     status: STATUS.STATUS_ACCEPTED,
@@ -132,7 +214,7 @@ export async function runCalcPoint({ domainId }, report: Function) {
                 progress: Math.floor(((+i + 1) / domains.length) * 100),
             });
         }
-    } else await runCalcPointInDomain(domainId, report);
+    } else await runCalcInDomain(domainId, report);
     return true;
 }
 
@@ -250,7 +332,7 @@ class DomainCodelinkRankHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     async get(domainId: string, page = 1) {
         const [dudocs, upcount, ucount] = await this.paginate(
-            domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 } }).sort({ point: -1 }),
+            domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 } }).sort({ point: -1, totalScore: -1, uid: 1 }),
             page,
             'codelink_ranking',
         );
@@ -266,6 +348,7 @@ class DomainCodelinkRankHandler extends Handler {
 export async function apply(ctx: Context) {
     SettingModel.DomainUserSetting(
         SettingModel.Setting('setting_storage', 'point', 0, 'number', 'Point', null, SettingModel.FLAG_HIDDEN | SettingModel.FLAG_DISABLED),
+        SettingModel.Setting('setting_storage', 'totalScore', 0, 'number', 'Total Score', null, SettingModel.FLAG_HIDDEN | SettingModel.FLAG_DISABLED),
         SettingModel.Setting('setting_storage', 'codelink_rank', 0, 'number', 'Codelink Rank', null, SettingModel.FLAG_DISABLED | SettingModel.FLAG_HIDDEN),
     );
     SettingModel.SystemSetting(
