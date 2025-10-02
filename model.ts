@@ -8,8 +8,6 @@ const {
 } = ContestModel;
 
 const problemData = [
-    { base: 500,  min: 150, perMin: 2 },
-    { base: 750,  min: 225, perMin: 3 },
     { base: 1000, min: 300, perMin: 4 },
     { base: 1500, min: 450, perMin: 6 },
     { base: 2000, min: 600, perMin: 8 },

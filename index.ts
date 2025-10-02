@@ -142,8 +142,8 @@ async function createMatches(domainId: string, groupName: string, templateTid: s
     if (!templateTdoc) {
         throw new Error(`Template contest with ID '${templateTid}' not found.`);
     }
-    if (templateTdoc.pids.length !== 7) {
-        await report({ message: `Warning: Template contest does not have exactly 7 problems (found ${templateTdoc.pids.length}).` });
+    if (templateTdoc.pids.length !== 5) {
+        await report({ message: `Warning: Template contest does not have exactly 5 problems (found ${templateTdoc.pids.length}).` });
     }
     await report({ message: `Using "${templateTdoc.title}" as template.` });
 
