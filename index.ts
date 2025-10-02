@@ -156,12 +156,19 @@ async function createMatches(domainId: string, groupName: string, templateTid: s
     const groupUserIds = groupDoc.uids;
 
     await report({ message: `Fetching and sorting points for ${groupUserIds.length} users in the group...` });
-    const userPoints = await domain.getMultiUserInDomain(domainId, {
+    let userPoints = await domain.getMultiUserInDomain(domainId, {
         uid: { $in: groupUserIds },
         point: { $exists: true },
     }).project({ uid: 1, point: 1 }).toArray();
 
-    userPoints.sort((a, b) => b.point - a.point);
+    const userPointsWithRandom = userPoints.map(u => ({ uid: u.uid, point: u.point, rand: Math.random() }));
+    userPointsWithRandom.sort((a, b) => {
+        if (b.point !== a.point) return b.point - a.point;
+        return a.rand - b.rand;
+    });
+    userPoints = userPointsWithRandom.map(u => ({ uid: u.uid, point: u.point }));
+
+    // userPoints.sort((a, b) => b.point - a.point);
     await report({ message: `Found ${userPoints.length} users with points. Starting to create matches.` });
 
 

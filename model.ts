@@ -262,14 +262,15 @@ const codelink = buildContestRule({
         const rankedTsdocs = [];
         let lastRank = 1;
         for (let i = 0; i < tsdocs.length; i++) {
-            if (i > 0 && (
-                (tsdocs[i].score || 0) !== (tsdocs[i - 1].score || 0)
-                || (tsdocs[i].acceptCount || 0) !== (tsdocs[i - 1].acceptCount || 0)
-                || (tsdocs[i].firstBloodCount || 0) !== (tsdocs[i - 1].firstBloodCount || 0)
-                || (tsdocs[i].time || 0) !== (tsdocs[i - 1].time || 0)
-            )) {
-                lastRank = i + 1;
-            }
+            // if (i > 0 && (
+            //     (tsdocs[i].score || 0) !== (tsdocs[i - 1].score || 0)
+            //     || (tsdocs[i].acceptCount || 0) !== (tsdocs[i - 1].acceptCount || 0)
+            //     || (tsdocs[i].firstBloodCount || 0) !== (tsdocs[i - 1].firstBloodCount || 0)
+            //     || (tsdocs[i].time || 0) !== (tsdocs[i - 1].time || 0)
+            // )) {
+            //     lastRank = i + 1;
+            // }
+            lastRank = i + 1;
             rankedTsdocs.push([lastRank, tsdocs[i]]);
         }
         return rankedTsdocs;
